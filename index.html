@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>SNAKE: SPECTRUM</title>
+    <!-- FAVICON: A Snake Emoji -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
     <!-- 
       OFFLINE VERSION - CLEANED & FIXED
       - Structure: formatting corrected (removed non-breaking spaces).
@@ -839,6 +841,9 @@ const UI = {
         this.updateCurrencyDisplays(); 
         Renderer.applyBackground(); 
         this.updateTips(); // Initial Tip on Load
+        // Fix: Update level text on startup
+        const cp = document.getElementById('campaignProgress');
+        if(cp) cp.innerText = "Current Level: " + Storage.data.maxUnlockedLevel;
     },
     getRandomTip() {
         return TIPS[Math.floor(Math.random() * TIPS.length)];
@@ -989,7 +994,12 @@ const UI = {
         if (id !== 'hud') { const el = document.getElementById(id); if(el) el.classList.remove('hidden'); }
         if (id === 'statsScreen') this.updateStatsUI();
         if (id === 'shopScreen') this.initShop();
-        if (id === 'mainMenu') this.updateCurrencyDisplays();
+        if (id === 'mainMenu') {
+            this.updateCurrencyDisplays();
+            // Fix: Update level text when returning to menu
+            const cp = document.getElementById('campaignProgress');
+            if(cp) cp.innerText = "Current Level: " + Storage.data.maxUnlockedLevel;
+        }
         if (id === 'levelSelectScreen') this.showLevelSelect();
     },
     // --- LEVEL SELECT UI ---
