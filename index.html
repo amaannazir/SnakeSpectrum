@@ -7,9 +7,9 @@
     <!-- FAVICON: A Snake Emoji -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
     <!-- 
-      OFFLINE VERSION - CONTEXT AWARE TIPS
-      - Added: Header text updates based on input device (Mobile vs Desktop).
-      - Fixed: Header text is now visible on mobile (scaled down).
+      OFFLINE VERSION - HEADER CAROUSEL
+      - Added: Smoothly rotating text in the top bar during gameplay.
+      - Content: Context-aware dash tips + strategy hints (Shields, Upgrades, etc).
       - Retains: 120 Levels, Tube Body, Powerups, Save System.
     -->
     <style>
@@ -93,21 +93,22 @@
             font-size: 12px; font-weight: 800; color: #64748b; 
             text-transform: uppercase; letter-spacing: 0.2em;
             text-align: center;
-            transition: all 0.3s;
+            transition: opacity 0.5s ease-in-out; /* Smooth Fade */
+            opacity: 1;
+            min-width: 150px; /* Prevent jitter when length changes */
         }
         
-        /* Updated Mobile Styles for Title/Tip */
         @media (max-width: 600px) { 
             .game-title-text { 
-                display: block; /* Ensure visibility */
-                font-size: 9px; /* Smaller font to fit */
+                display: block; 
+                font-size: 9px;
                 letter-spacing: 0.05em;
-                max-width: 30vw; /* Prevent pushing other elements */
+                max-width: 35vw; 
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
             } 
-            .hud-group { gap: 8px; } /* Tighter gap on mobile */
+            .hud-group { gap: 8px; } 
             .stat-capsule { padding: 4px 10px; font-size: 12px; }
         }
 
@@ -886,11 +887,60 @@ const UI = {
         this.defaultTitle = "Snake: Spectrum";
         this.gameplayTitle = isMobile ? "Double Tap to Dash!" : "Press SPACE to Dash!";
         if(header) header.innerText = this.defaultTitle;
+        
+        // Start the Carousel
+        this.startHeaderCarousel();
     },
+    
+    // --- HEADER CAROUSEL LOGIC ---
+    carouselInterval: null,
+    messages: [
+        "Grab a Shield 🛡️ to survive a crash!",
+        "Don't forget to Upgrade your stats!",
+        "Check the Shop for cool Skins!",
+        "Grid Lines make navigation easier!",
+        "Magnets 🧲 help clear tricky spots!",
+        "Gold Apples 🏆 are worth 50 points!",
+        "Avoid Skulls 💀 at all costs!",
+        "Use Dash 🚀 to escape traps!"
+    ],
+    
+    startHeaderCarousel() {
+        if(this.carouselInterval) clearInterval(this.carouselInterval);
+        
+        let index = 0;
+        this.carouselInterval = setInterval(() => {
+            // Only rotate if game is active or we want tips in menu too
+            // Let's rotate always for engagement, but prioritize gameplay title when playing starts
+            if (Game.state === 'playing') {
+                 // During game, cycle tips. 
+                 // First message is handled by setGameMessage
+                 const msg = this.messages[index % this.messages.length];
+                 this.transitionHeaderText(msg);
+                 index++;
+            }
+        }, 4000); 
+    },
+    
     setGameMessage(active) {
+        // When game starts/stops, reset the text immediately
         const header = document.getElementById('headerMessage');
-        if(header) header.innerText = active ? this.gameplayTitle : this.defaultTitle;
+        if(header) {
+            header.innerText = active ? this.gameplayTitle : this.defaultTitle;
+            header.style.opacity = 1;
+        }
     },
+    
+    transitionHeaderText(text) {
+        const el = document.getElementById('headerMessage');
+        if (!el) return;
+        el.style.opacity = 0;
+        setTimeout(() => {
+            el.innerText = text;
+            el.style.opacity = 1;
+        }, 500);
+    },
+
     getRandomTip() {
         return TIPS[Math.floor(Math.random() * TIPS.length)];
     },
