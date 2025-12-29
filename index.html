@@ -7,9 +7,10 @@
     <!-- FAVICON: A Snake Emoji -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
     <!-- 
-      OFFLINE VERSION - CLEANED & FIXED
-      - Structure: formatting corrected (removed non-breaking spaces).
-      - Features: 120 Levels, Tube Body, Powerups, Save System.
+      OFFLINE VERSION - CONTEXT AWARE TIPS
+      - Added: Header text updates based on input device (Mobile vs Desktop).
+      - Fixed: Header text is now visible on mobile (scaled down).
+      - Retains: 120 Levels, Tube Body, Powerups, Save System.
     -->
     <style>
         /* --- RESET & BASE --- */
@@ -91,8 +92,24 @@
         .game-title-text {
             font-size: 12px; font-weight: 800; color: #64748b; 
             text-transform: uppercase; letter-spacing: 0.2em;
+            text-align: center;
+            transition: all 0.3s;
         }
-        @media (max-width: 600px) { .game-title-text { display: none; } }
+        
+        /* Updated Mobile Styles for Title/Tip */
+        @media (max-width: 600px) { 
+            .game-title-text { 
+                display: block; /* Ensure visibility */
+                font-size: 9px; /* Smaller font to fit */
+                letter-spacing: 0.05em;
+                max-width: 30vw; /* Prevent pushing other elements */
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            } 
+            .hud-group { gap: 8px; } /* Tighter gap on mobile */
+            .stat-capsule { padding: 4px 10px; font-size: 12px; }
+        }
 
         .pause-btn {
             width: 44px; height: 44px;
@@ -219,6 +236,12 @@
             font-size: 0.8rem; font-weight: 800; margin-top: 4px;
         }
 
+        /* --- UPGRADE PIPS --- */
+        .upgrade-pip {
+            width: 8px; height: 4px; background: #334155; border-radius: 2px;
+        }
+        .upgrade-pip.filled { background: #4ade80; }
+
         /* --- SETTINGS --- */
         .settings-row {
             display: flex; justify-content: space-between; align-items: center;
@@ -317,7 +340,7 @@
             <div id="powerupDisplay" class="flex gap-2"></div>
         </div>
 
-        <div class="game-title-text">Snake: Spectrum</div>
+        <div id="headerMessage" class="game-title-text">Snake: Spectrum</div>
 
         <div class="hud-group">
             <div class="stat-capsule">
@@ -412,7 +435,8 @@
                 </div>
                 
                 <div class="tab-group">
-                    <div class="tab active" id="tabSkins" onclick="UI.switchShopTab('skins')">Skins</div>
+                    <div class="tab active" id="tabUpgrades" onclick="UI.switchShopTab('upgrades')">Upgrades</div>
+                    <div class="tab" id="tabSkins" onclick="UI.switchShopTab('skins')">Skins</div>
                     <div class="tab" id="tabScales" onclick="UI.switchShopTab('scales')">Scales</div>
                     <div class="tab" id="tabFoods" onclick="UI.switchShopTab('foods')">Food</div>
                     <div class="tab" id="tabTrails" onclick="UI.switchShopTab('trails')">Trails</div>
@@ -691,6 +715,14 @@ const BACKGROUNDS = [
     { id: 'candy', name: 'Candy', price: 600, bg: 'radial-gradient(circle at 50% 50%, #fce4ec 0%, #f48fb1 100%)', color: '#f48fb1' }   
 ];
 
+// NEW UPGRADES DATA
+const UPGRADES = [
+    { id: 'dash', name: 'Reflexes', icon: '🚀', description: 'Dash recharges faster', maxLevel: 5, costs: [50, 100, 200, 400, 800] },
+    { id: 'magnet', name: 'Magnetism', icon: '🧲', description: 'Magnets last longer', maxLevel: 5, costs: [50, 100, 200, 400, 800] },
+    { id: 'luck', name: 'Fortune', icon: '🍀', description: 'More Gold Apples spawn', maxLevel: 5, costs: [100, 250, 500, 1000, 2000] },
+    { id: 'lives', name: 'Vitality', icon: '❤️', description: 'Start with extra lives', maxLevel: 3, costs: [500, 1500, 3000] }
+];
+
 const BANK_PACKS = [
     { id: 'com.snakespectrum.coins.tiny', name: 'Handful', amount: 500, price: '$0.99' },
     { id: 'com.snakespectrum.coins.small', name: 'Bag', amount: 1500, price: '$2.99' },
@@ -748,7 +780,8 @@ const Storage = {
         skin: 'classic', scale: 'none', foodTheme: 'classic', trail: 'none', background: 'classic',
         unlockedSkins: ['classic'], unlockedScales: ['none'],
         unlockedFoods: ['classic'], unlockedTrails: ['none'],
-        unlockedBackgrounds: ['classic']
+        unlockedBackgrounds: ['classic'],
+        upgrades: { dash: 0, magnet: 0, luck: 0, lives: 0 } // New Upgrade Data
     },
     load() {
         try {
@@ -757,6 +790,8 @@ const Storage = {
                 const savedData = JSON.parse(s);
                 // Merge saved data with default structure to ensure new fields are present
                 this.data = { ...this.data, ...savedData }; 
+                // Ensure upgrades object exists for old saves
+                if (!this.data.upgrades) this.data.upgrades = { dash: 0, magnet: 0, luck: 0, lives: 0 };
             }
         } catch (e) {
             console.error("Save file corrupted, resetting to defaults.");
@@ -836,7 +871,7 @@ const AudioSys = {
 
 // --- UI ---
 const UI = {
-    currentShopTab: 'skins',
+    currentShopTab: 'upgrades', // Default to upgrades
     init() { 
         this.updateCurrencyDisplays(); 
         Renderer.applyBackground(); 
@@ -844,6 +879,17 @@ const UI = {
         // Fix: Update level text on startup
         const cp = document.getElementById('campaignProgress');
         if(cp) cp.innerText = "Current Level: " + Storage.data.maxUnlockedLevel;
+        
+        // --- NEW: SET DYNAMIC HEADER MESSAGE ---
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.matchMedia("(pointer: coarse)").matches;
+        const header = document.getElementById('headerMessage');
+        this.defaultTitle = "Snake: Spectrum";
+        this.gameplayTitle = isMobile ? "Double Tap to Dash!" : "Press SPACE to Dash!";
+        if(header) header.innerText = this.defaultTitle;
+    },
+    setGameMessage(active) {
+        const header = document.getElementById('headerMessage');
+        if(header) header.innerText = active ? this.gameplayTitle : this.defaultTitle;
     },
     getRandomTip() {
         return TIPS[Math.floor(Math.random() * TIPS.length)];
@@ -880,6 +926,7 @@ const UI = {
     switchShopTab(tab) {
         this.currentShopTab = tab;
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        if(tab === 'upgrades') document.getElementById('tabUpgrades').classList.add('active');
         if(tab === 'skins') document.getElementById('tabSkins').classList.add('active');
         if(tab === 'scales') document.getElementById('tabScales').classList.add('active');
         if(tab === 'foods') document.getElementById('tabFoods').classList.add('active');
@@ -892,7 +939,6 @@ const UI = {
         const grid = document.getElementById('shopGrid'); if(!grid) return;
         grid.innerHTML = '';
         const balance = Storage.data.currency;
-        let items, currentId, unlocked;
 
         if (this.currentShopTab === 'bank') {
             BANK_PACKS.forEach(pack => {
@@ -905,6 +951,56 @@ const UI = {
             return;
         }
 
+        if (this.currentShopTab === 'upgrades') {
+            UPGRADES.forEach(upg => {
+                const currentLevel = Storage.data.upgrades[upg.id] || 0;
+                const isMax = currentLevel >= upg.maxLevel;
+                const nextCost = isMax ? 0 : upg.costs[currentLevel];
+                const canAfford = balance >= nextCost;
+
+                const el = document.createElement('div');
+                el.className = 'shop-item';
+                
+                // Build Level Pips
+                let pipsHtml = '<div style="display:flex; gap:2px; margin-top:4px;">';
+                for(let i=0; i<upg.maxLevel; i++) {
+                    pipsHtml += `<div class="upgrade-pip ${i < currentLevel ? 'filled' : ''}"></div>`;
+                }
+                pipsHtml += '</div>';
+
+                let footer = isMax 
+                    ? '<span style="color:#4ade80; font-size:10px; font-weight:bold;">MAXED</span>' 
+                    : `<div class="price-tag"><span>🍎</span>${nextCost}</div>`;
+
+                el.innerHTML = `
+                    <div class="preview-circle" style="background:#334155; font-size:1.5rem;">${upg.icon}</div>
+                    <div style="font-size:12px; font-weight:bold; color:#cbd5e1;">${upg.name}</div>
+                    <div style="font-size:10px; color:#94a3b8; text-align:center; line-height:1.2;">${upg.description}</div>
+                    ${pipsHtml}
+                    <div style="margin-top:8px;">${footer}</div>
+                `;
+                
+                el.onclick = () => {
+                    if (isMax) return;
+                    if (canAfford) {
+                        Storage.update('currency', -nextCost);
+                        Storage.data.upgrades[upg.id] = currentLevel + 1;
+                        Storage.save();
+                        AudioSys.playPowerup();
+                        this.updateCurrencyDisplays();
+                        this.initShop(); // Re-render
+                        this.toast("Upgrade Purchased!");
+                    } else {
+                        AudioSys.playEatBad();
+                        this.toast("Not enough apples!");
+                    }
+                };
+                grid.appendChild(el);
+            });
+            return;
+        }
+
+        let items, currentId, unlocked;
         if (this.currentShopTab === 'skins') { items = SKINS; currentId = Storage.data.skin; unlocked = Storage.data.unlockedSkins; }
         else if (this.currentShopTab === 'scales') { items = SCALES; currentId = Storage.data.scale; unlocked = Storage.data.unlockedScales; }
         else if (this.currentShopTab === 'foods') { items = FOODS; currentId = Storage.data.foodTheme; unlocked = Storage.data.unlockedFoods; }
@@ -999,6 +1095,7 @@ const UI = {
             // Fix: Update level text when returning to menu
             const cp = document.getElementById('campaignProgress');
             if(cp) cp.innerText = "Current Level: " + Storage.data.maxUnlockedLevel;
+            UI.setGameMessage(false); // Reset Title
         }
         if (id === 'levelSelectScreen') this.showLevelSelect();
     },
@@ -1146,7 +1243,10 @@ const Game = {
             const now = Date.now();
             if (now - lastTapTime < 300) {
                 if(this.dashCooldown <= 0) { 
-                    this.dashCooldown = 60; 
+                    // APPLY UPGRADE: DASH COOLDOWN
+                    const reduction = (Storage.data.upgrades.dash || 0) * 8; 
+                    this.dashCooldown = Math.max(20, 60 - reduction); 
+                    
                     AudioSys.playDash(); 
                     this.update(); 
                 }
@@ -1198,7 +1298,12 @@ const Game = {
     start(mode, startLevel = 1) { this.mode = mode; this.level = startLevel; this.launchGame(); },
 
     launchGame() {
-        this.state = 'playing'; this.score = 0; this.lives = 3; 
+        this.state = 'playing'; this.score = 0; 
+        
+        // APPLY UPGRADE: LIVES
+        this.lives = 3 + (Storage.data.upgrades.lives || 0);
+        UI.setGameMessage(true);
+        
         // Logic for difficulty based on level
         // REVISED SPEED FORMULA: Starts slow (220ms), caps at 60ms around level 120
         this.speed = Math.max(80, 220 - (this.level * 0.9)); // SLOWER SCALING
@@ -1381,7 +1486,14 @@ const Game = {
         if (e.key === 'Escape') this.togglePause();
         if (this.state !== 'playing') return;
         if (e.key === ' ' || e.key === 'Space') {
-            if(this.dashCooldown <= 0) { this.dashCooldown = 60; AudioSys.playDash(); this.update(); }
+            if(this.dashCooldown <= 0) { 
+                // APPLY UPGRADE: DASH COOLDOWN
+                const reduction = (Storage.data.upgrades.dash || 0) * 8; 
+                this.dashCooldown = Math.max(20, 60 - reduction); 
+                
+                AudioSys.playDash(); 
+                this.update(); 
+            }
             e.preventDefault(); return;
         }
         let dx = 0, dy = 0; const k = e.key;
@@ -1515,7 +1627,11 @@ const Game = {
         
         // POWERUPS
         if (f.type === 'magnet') {
-            this.activePowerups.magnet = 600; // 10 seconds
+            // APPLY UPGRADE: MAGNET DURATION
+            // Base: 600 frames (10s). +2s (120 frames) per level.
+            const extra = (Storage.data.upgrades.magnet || 0) * 120;
+            this.activePowerups.magnet = 600 + extra; 
+            
             UI.toast("Magnet Active!");
             UI.updatePowerups();
             AudioSys.playPowerup();
@@ -1580,9 +1696,10 @@ const Game = {
             const skullChance = effectiveLvl < 10 ? 0 : Math.min(0.20, 0.01 + ((effectiveLvl-10) * 0.005));
             const poisonChance = effectiveLvl < 3 ? 0 : Math.min(0.20, 0.01 + ((effectiveLvl-3) * 0.005));
             
-            // INCREASED GOLD CHANCE FOR HIGHER LEVELS
-            // Caps at 50% spawn rate for very high levels to help meet score targets
-            const goldChance = Math.min(0.50, 0.10 + (effectiveLvl * 0.008));
+            // APPLY UPGRADE: GOLD CHANCE
+            // Base logic + 5% per upgrade level
+            const upgradeBonus = (Storage.data.upgrades.luck || 0) * 0.05;
+            const goldChance = Math.min(0.50, 0.10 + (effectiveLvl * 0.008) + upgradeBonus);
 
             if (Math.random() < goldChance) this.spawnFood('gold');
             if (Math.random() < skullChance) this.spawnFood('skull');
