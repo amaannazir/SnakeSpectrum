@@ -7,10 +7,10 @@
     <!-- FAVICON: A Snake Emoji -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
     <!-- 
-      OFFLINE VERSION - HEADER CAROUSEL
-      - Added: Smoothly rotating text in the top bar during gameplay.
-      - Content: Context-aware dash tips + strategy hints (Shields, Upgrades, etc).
-      - Retains: 120 Levels, Tube Body, Powerups, Save System.
+      OFFLINE VERSION - TUTORIAL ENHANCEMENTS
+      - Tutorial: Added "Next" and "Skip" buttons to overlay.
+      - Tutorial: "Speed Boost" step now highlights the stamina bar in HUD.
+      - Tutorial: Updated Dash text to explain stamina recharge & upgrades.
     -->
     <style>
         /* --- RESET & BASE --- */
@@ -127,6 +127,19 @@
         .dash-bar { width: 4px; height: 20px; background: #334155; border-radius: 99px; overflow: hidden; position: relative; margin-left: 4px;}
         .dash-fill { position: absolute; bottom: 0; width: 100%; background: #60a5fa; transition: height 0.1s linear; }
 
+        /* Highlight Animation for Tutorial */
+        @keyframes attention-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.7); transform: scale(1); border-color: #f43f5e; }
+            50% { box-shadow: 0 0 0 8px rgba(244, 63, 94, 0); transform: scale(1.5); border-color: #f43f5e; }
+            100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); transform: scale(1); border-color: #f43f5e; }
+        }
+        .tutorial-highlight {
+            animation: attention-pulse 1.2s infinite;
+            z-index: 100;
+            border: 2px solid #f43f5e;
+            position: relative;
+        }
+
         /* --- GAME AREA --- */
         #game-wrapper {
             flex: 1;
@@ -189,6 +202,8 @@
         .btn-secondary:active { transform: translateY(4px); box-shadow: none; }
         .btn-ad { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 0 #b45309; }
         .btn-disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; box-shadow: none !important; filter: grayscale(1); }
+        .btn-text { background: transparent; box-shadow: none; color: #94a3b8; padding: 10px; font-size: 0.9rem; }
+        .btn-text:active { background: rgba(255,255,255,0.05); transform: translateY(2px); }
 
         /* --- LEVEL SELECT GRID --- */
         .level-grid {
@@ -335,7 +350,7 @@
             <div class="stat-capsule">
                 <span class="text-indigo stat-icon">★</span>
                 <span id="scoreDisplay" class="stat-val">0</span>
-                <div class="dash-bar"><div id="dashMeter" class="dash-fill" style="height: 100%"></div></div>
+                <div id="dashContainer" class="dash-bar"><div id="dashMeter" class="dash-fill" style="height: 100%"></div></div>
             </div>
             <!-- Powerups Display -->
             <div id="powerupDisplay" class="flex gap-2"></div>
@@ -361,6 +376,19 @@
     <div id="game-wrapper">
         <div id="bg-layer"></div>
         <canvas id="gameCanvas"></canvas>
+
+        <!-- TUTORIAL OVERLAY -->
+        <div id="tutorialOverlay" class="hidden absolute" style="inset: 0; z-index: 55; pointer-events: none; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+            <div class="interactive glass-panel" style="max-width: 80%; padding: 24px; pointer-events: auto;">
+                 <div id="tutorialIcon" style="font-size: 4rem; margin-bottom: 16px;">👋</div>
+                 <h2 id="tutorialTitle" style="font-size: 1.8rem; margin: 0 0 8px 0;" class="font-black text-white">Welcome!</h2>
+                 <p id="tutorialText" style="color: #cbd5e1; font-weight: bold; margin: 0 0 20px 0; font-size: 1rem;">Let's learn the basics.</p>
+                 <div class="flex gap-2 justify-center" style="margin-top: 20px;">
+                     <button id="tutorialSkipBtn" class="btn btn-text" onclick="Game.skipTutorial()">Skip Tutorial</button>
+                     <button id="tutorialNextBtn" class="btn" style="min-width: 100px;" onclick="Game.advanceTutorial()">Next</button>
+                 </div>
+            </div>
+        </div>
 
         <!-- MAIN MENU -->
         <div id="mainMenu" class="ui-layer">
@@ -696,6 +724,14 @@ const FOODS = [
     { id: 'bugs', name: 'Bugs', price: 250, icon: '🪲' }           
 ];
 
+// NEW UPGRADES DATA
+const UPGRADES = [
+    { id: 'dash', name: 'Reflexes', icon: '🚀', description: 'Dash recharges faster', maxLevel: 5, costs: [50, 100, 200, 400, 800] },
+    { id: 'magnet', name: 'Magnetism', icon: '🧲', description: 'Magnets last longer', maxLevel: 5, costs: [50, 100, 200, 400, 800] },
+    { id: 'luck', name: 'Fortune', icon: '🍀', description: 'More Gold Apples spawn', maxLevel: 5, costs: [100, 250, 500, 1000, 2000] },
+    { id: 'lives', name: 'Vitality', icon: '❤️', description: 'Start with extra lives', maxLevel: 3, costs: [500, 1500, 3000] }
+];
+
 const TRAILS = [
     { id: 'none', name: 'None', price: 0, icon: '∅' },
     { id: 'dust', name: 'Dust', price: 50, icon: '💨' },
@@ -714,14 +750,6 @@ const BACKGROUNDS = [
     { id: 'sunset', name: 'Sunset', price: 400, bg: 'linear-gradient(to top, #4a148c, #ff6f00)', color: '#4a148c' },   
     { id: 'arctic', name: 'Arctic', price: 450, bg: 'radial-gradient(circle at 50% 50%, #e0f7fa 0%, #006064 100%)', color: '#006064' }, 
     { id: 'candy', name: 'Candy', price: 600, bg: 'radial-gradient(circle at 50% 50%, #fce4ec 0%, #f48fb1 100%)', color: '#f48fb1' }   
-];
-
-// NEW UPGRADES DATA
-const UPGRADES = [
-    { id: 'dash', name: 'Reflexes', icon: '🚀', description: 'Dash recharges faster', maxLevel: 5, costs: [50, 100, 200, 400, 800] },
-    { id: 'magnet', name: 'Magnetism', icon: '🧲', description: 'Magnets last longer', maxLevel: 5, costs: [50, 100, 200, 400, 800] },
-    { id: 'luck', name: 'Fortune', icon: '🍀', description: 'More Gold Apples spawn', maxLevel: 5, costs: [100, 250, 500, 1000, 2000] },
-    { id: 'lives', name: 'Vitality', icon: '❤️', description: 'Start with extra lives', maxLevel: 3, costs: [500, 1500, 3000] }
 ];
 
 const BANK_PACKS = [
@@ -782,22 +810,19 @@ const Storage = {
         unlockedSkins: ['classic'], unlockedScales: ['none'],
         unlockedFoods: ['classic'], unlockedTrails: ['none'],
         unlockedBackgrounds: ['classic'],
-        upgrades: { dash: 0, magnet: 0, luck: 0, lives: 0 } // New Upgrade Data
+        upgrades: { dash: 0, magnet: 0, luck: 0, lives: 0 },
+        tutorial: false // Tutorial flag
     },
     load() {
         try {
             const s = localStorage.getItem('snake_spectrum_save');
             if (s) { 
                 const savedData = JSON.parse(s);
-                // Merge saved data with default structure to ensure new fields are present
                 this.data = { ...this.data, ...savedData }; 
-                // Ensure upgrades object exists for old saves
                 if (!this.data.upgrades) this.data.upgrades = { dash: 0, magnet: 0, luck: 0, lives: 0 };
             }
         } catch (e) {
             console.error("Save file corrupted, resetting to defaults.");
-            // Optionally clear the corrupted save
-            // localStorage.removeItem('snake_spectrum_save'); 
         }
     },
     save() { 
@@ -910,11 +935,7 @@ const UI = {
         
         let index = 0;
         this.carouselInterval = setInterval(() => {
-            // Only rotate if game is active or we want tips in menu too
-            // Let's rotate always for engagement, but prioritize gameplay title when playing starts
             if (Game.state === 'playing') {
-                 // During game, cycle tips. 
-                 // First message is handled by setGameMessage
                  const msg = this.messages[index % this.messages.length];
                  this.transitionHeaderText(msg);
                  index++;
@@ -923,7 +944,6 @@ const UI = {
     },
     
     setGameMessage(active) {
-        // When game starts/stops, reset the text immediately
         const header = document.getElementById('headerMessage');
         if(header) {
             header.innerText = active ? this.gameplayTitle : this.defaultTitle;
@@ -1250,6 +1270,11 @@ const Game = {
     digestions: [], biteTimer: 0, prevTail: null, didEat: false,
     accumulator: 0,
     activePowerups: { magnet: 0, shield: false }, // POWERUP STATE
+    
+    // Tutorial Variables
+    tutorialStep: 0,
+    tutorialTargetMode: 'campaign',
+    tutorialTargetLevel: 1,
 
     init() {
         this.resize();
@@ -1292,7 +1317,12 @@ const Game = {
 
             const now = Date.now();
             if (now - lastTapTime < 300) {
-                if(this.dashCooldown <= 0) { 
+                 // Double Tap Detected
+                 if (this.state === 'tutorial' && this.tutorialStep === 1) {
+                      AudioSys.playDash();
+                      this.tutorialStep++;
+                      this.updateTutorial();
+                 } else if(this.dashCooldown <= 0 && this.state === 'playing') { 
                     // APPLY UPGRADE: DASH COOLDOWN
                     const reduction = (Storage.data.upgrades.dash || 0) * 8; 
                     this.dashCooldown = Math.max(20, 60 - reduction); 
@@ -1345,7 +1375,120 @@ const Game = {
         this.canvas.height = this.tileCountY * this.gridSize;
     },
 
-    start(mode, startLevel = 1) { this.mode = mode; this.level = startLevel; this.launchGame(); },
+    start(mode, startLevel = 1) { 
+        if(!Storage.data.tutorial) {
+             this.startTutorial(mode, startLevel);
+             return;
+        }
+        this.mode = mode; 
+        this.level = startLevel; 
+        this.launchGame(); 
+    },
+    
+    // --- TUTORIAL LOGIC ---
+    startTutorial(targetMode, targetLevel) {
+        this.state = 'tutorial';
+        this.tutorialStep = 0;
+        this.tutorialTargetMode = targetMode;
+        this.tutorialTargetLevel = targetLevel;
+        
+        // Init Game minimal
+        this.score = 0; this.lives = 3; this.speed = 150;
+        const sx = Math.floor(this.tileCountX / 2); const sy = Math.floor(this.tileCountY / 2);
+        this.snake = [{x: sx, y: sy}, {x: sx-1, y: sy}, {x: sx-2, y: sy}];
+        this.velocity = {x: 1, y: 0}; this.nextVelocity = {x: 1, y: 0};
+        this.foods = []; this.walls = [];
+        this.prevTail = null;
+        this.lastTime = performance.now();
+        this.accumulator = 0;
+        
+        UI.showScreen('hud');
+        this.updateTutorial();
+    },
+
+    skipTutorial() {
+        Storage.data.tutorial = true;
+        Storage.save();
+        document.getElementById('tutorialOverlay').classList.add('hidden');
+        const dashBar = document.getElementById('dashContainer');
+        if(dashBar) dashBar.classList.remove('tutorial-highlight');
+        this.start(this.tutorialTargetMode, this.tutorialTargetLevel);
+    },
+    
+    updateTutorial() {
+        const overlay = document.getElementById('tutorialOverlay');
+        const title = document.getElementById('tutorialTitle');
+        const text = document.getElementById('tutorialText');
+        const icon = document.getElementById('tutorialIcon');
+        const btnNext = document.getElementById('tutorialNextBtn');
+        const dashBar = document.getElementById('dashContainer');
+        if (dashBar) dashBar.classList.remove('tutorial-highlight');
+        
+        overlay.classList.remove('hidden');
+        
+        // Step Logic
+        switch(this.tutorialStep) {
+            case 0: // Move
+                icon.innerText = "👆";
+                title.innerText = "Welcome!";
+                text.innerHTML = "Swipe or use Arrow Keys to move.<br><span style='font-size:0.8em; color:#94a3b8'>(Touchscreens supported on PC!)</span>";
+                break;
+            case 1: // Dash
+                icon.innerText = "🚀";
+                title.innerText = "Speed Boost";
+                text.innerText = "This is your speed boost stamina. It recharges after a use. The speed boost delay can be upgraded via the store.\n\nDouble Tap screen or Press Spacebar to DASH!";
+                if(dashBar) dashBar.classList.add('tutorial-highlight');
+                break;
+            case 2: // Apple
+                icon.innerText = "🍎";
+                title.innerText = "Eat to Grow";
+                text.innerText = "Eat Red Apples to get points.";
+                if(this.foods.length === 0) this.spawnFood('apple');
+                break;
+            case 3: // Gold
+                icon.innerText = "🏆";
+                title.innerText = "Bonus Points";
+                text.innerText = "Gold Apples give 5x points!";
+                if(this.foods.length === 0) this.spawnFood('gold');
+                break;
+            case 4: // Magnet
+                icon.innerText = "🧲";
+                title.innerText = "Magnet";
+                text.innerText = "Magnets attract food to you!";
+                if(this.foods.length === 0) this.spawnFood('magnet');
+                break;
+            case 5: // Shield
+                icon.innerText = "🛡️";
+                title.innerText = "Shield";
+                text.innerText = "Shields protect you from one crash!";
+                if(this.foods.length === 0) this.spawnFood('shield');
+                break;
+            case 6: // Bad Stuff Warning
+                icon.innerText = "⚠️";
+                title.innerText = "Watch Out!";
+                text.innerHTML = "Avoid <span style='color:#94a3b8'>Skulls 💀</span> (Instant Death)<br>and <span style='color:#bef264'>Poison 🧪</span> (Reversed Controls)!";
+                btnNext.innerText = "Start Game";
+                btnNext.onclick = () => {
+                    this.skipTutorial();
+                };
+                break;
+        }
+    },
+    
+    advanceTutorial() {
+         // Manual advance via button
+         if (this.tutorialStep < 6) {
+             this.tutorialStep++;
+             this.updateTutorial();
+             // Spawn food if advancing to a food step manually
+             if (this.tutorialStep === 2 && this.foods.length === 0) this.spawnFood('apple');
+             if (this.tutorialStep === 3 && this.foods.length === 0) this.spawnFood('gold');
+             if (this.tutorialStep === 4 && this.foods.length === 0) this.spawnFood('magnet');
+             if (this.tutorialStep === 5 && this.foods.length === 0) this.spawnFood('shield');
+         } else {
+             this.skipTutorial();
+         }
+    },
 
     launchGame() {
         this.state = 'playing'; this.score = 0; 
@@ -1534,6 +1677,42 @@ const Game = {
 
     handleInput(e) {
         if (e.key === 'Escape') this.togglePause();
+        
+        // --- TUTORIAL INPUT CHECK ---
+        if (this.state === 'tutorial') {
+             if (this.tutorialStep === 0) {
+                 // Check for movement input
+                 let dx = 0, dy = 0; const k = e.key;
+                 if (k === 'ArrowUp' || k === 'w') dy = -1; 
+                 if (k === 'ArrowDown' || k === 's') dy = 1; 
+                 if (k === 'ArrowLeft' || k === 'a') dx = -1; 
+                 if (k === 'ArrowRight' || k === 'd') dx = 1;
+                 
+                 if (dx !== 0 || dy !== 0) {
+                     this.nextVelocity = {x: dx, y: dy};
+                     // Advance because we got input, don't check if we were stopped.
+                     this.tutorialStep++;
+                     this.updateTutorial();
+                 }
+             } else if (this.tutorialStep === 1) {
+                 if (e.key === ' ' || e.key === 'Space') {
+                     AudioSys.playDash();
+                     this.tutorialStep++;
+                     this.updateTutorial();
+                 }
+             } else {
+                 // Normal movement for food gathering steps
+                 let dx = 0, dy = 0; const k = e.key;
+                 if (k === 'ArrowUp' || k === 'w') dy = -1; 
+                 if (k === 'ArrowDown' || k === 's') dy = 1; 
+                 if (k === 'ArrowLeft' || k === 'a') dx = -1; 
+                 if (k === 'ArrowRight' || k === 'd') dx = 1;
+                 if (dx !== 0 || dy !== 0) this.nextVelocity = {x: dx, y: dy};
+             }
+             return;
+        }
+
+
         if (this.state !== 'playing') return;
         if (e.key === ' ' || e.key === 'Space') {
             if(this.dashCooldown <= 0) { 
@@ -1568,6 +1747,34 @@ const Game = {
 
     loop(currentTime) {
         requestAnimationFrame((t) => this.loop(t));
+        
+        // --- TUTORIAL LOOP ---
+        if (this.state === 'tutorial') {
+             const deltaTime = currentTime - this.lastTime;
+             this.lastTime = currentTime;
+             this.accumulator += deltaTime;
+             
+             // In tutorial, we might wait for input instead of auto-moving in step 0 & 1
+             if (this.tutorialStep > 1) {
+                 while (this.accumulator >= this.speed) {
+                    this.update(); // Standard movement for eating
+                    this.accumulator -= this.speed;
+                 }
+             } else {
+                 this.accumulator = 0; // Freeze time for first steps
+                 if (this.tutorialStep === 0 && (this.nextVelocity.x !== 0 || this.nextVelocity.y !== 0)) {
+                      // Allow first move to trigger
+                      this.velocity = this.nextVelocity;
+                      this.update();
+                      this.nextVelocity = {x:0, y:0}; // Reset to stop
+                 }
+             }
+             
+             let interpolation = this.accumulator / this.speed;
+             Renderer.draw(interpolation);
+             return;
+        }
+
         if (this.confetti.length > 0) this.updateConfetti();
         if (this.state === 'paused' || this.state === 'gameover' || this.state === 'levelcomplete') { Renderer.draw(); return; }
 
@@ -1668,11 +1875,24 @@ const Game = {
         this.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; p.alpha -= 0.05; });
         for(let i = this.foods.length - 1; i >= 0; i--) if (this.foods[i].life > 0 && --this.foods[i].life === 0) this.foods.splice(i, 1);
         this.foods = this.foods.filter(f => f.x < this.tileCountX && f.y < this.tileCountY);
-        if (!this.foods.some(f => f.type === 'apple')) this.spawnFood('apple');
+        
+        // Only spawn default food if not in tutorial
+        if (this.state !== 'tutorial' && !this.foods.some(f => f.type === 'apple')) this.spawnFood('apple');
     },
 
     eatFood(f, index) {
         this.foods.splice(index, 1);
+        
+        // --- TUTORIAL HANDLER ---
+        if (this.state === 'tutorial') {
+             AudioSys.playEat();
+             this.tutorialStep++;
+             this.updateTutorial();
+             // Prevent growing too long in tutorial
+             if(this.snake.length > 5) this.snake.pop();
+             return;
+        }
+
         Storage.update('totalApples', 1);
         
         // POWERUPS
@@ -1802,6 +2022,14 @@ const Game = {
             this.velocity = { x: -this.velocity.x, y: -this.velocity.y };
             this.invincible = 30; // Brief grace period
             return;
+        }
+
+        if (this.state === 'tutorial') {
+             // Safe respawn in tutorial
+             const cx = Math.floor(this.tileCountX/2); const cy = Math.floor(this.tileCountY/2);
+             this.snake = [{x: cx, y: cy}, {x: cx-1, y: cy}, {x: cx-2, y: cy}];
+             this.velocity = {x: 1, y: 0}; this.nextVelocity = {x: 1, y: 0};
+             return;
         }
 
         Storage.update('wallsHit', 1); AudioSys.playDie(); this.lives--; UI.updateHUD(); Renderer.shake = 12;
