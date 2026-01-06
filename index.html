@@ -7,10 +7,10 @@
     <!-- FAVICON: A Snake Emoji -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
     <!-- 
-      OFFLINE VERSION - TUTORIAL ENHANCEMENTS
-      - Tutorial: Added "Next" and "Skip" buttons to overlay.
-      - Tutorial: "Speed Boost" step now highlights the stamina bar in HUD.
-      - Tutorial: Updated Dash text to explain stamina recharge & upgrades.
+      OFFLINE VERSION - LEVEL SELECT REDESIGN
+      - UI: Current Level pulsates and stands out with a Play icon.
+      - UI: Locked levels are dimmed/dashed to reduce click confusion.
+      - UI: Completed levels marked with checkmarks.
     -->
     <style>
         /* --- RESET & BASE --- */
@@ -215,12 +215,56 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             font-weight: 900; cursor: pointer; border: 2px solid transparent; position: relative;
             font-size: 0.9rem;
+            transition: all 0.2s;
         }
+        
+        /* Unlocked/Played Levels */
         .level-box.unlocked { background: #334155; color: white; }
-        .level-box.unlocked:hover { background: #475569; }
-        .level-box.completed { background: #10b981; box-shadow: 0 4px 0 #047857; }
-        .level-box.locked { background: rgba(0,0,0,0.3); color: #475569; cursor: not-allowed; }
-        .level-box.next-locked { border-color: #f59e0b; color: #f59e0b; cursor: pointer; }
+        .level-box.unlocked:hover { background: #475569; transform: translateY(-2px); }
+        
+        /* COMPLETED LEVELS - DARK GREEN + TICK */
+        .level-box.completed { 
+            background: #064e3b; /* Dark Green */
+            color: #10b981; /* Light Green Text */
+            box-shadow: 0 4px 0 #022c22; 
+            border-color: #059669; 
+        }
+        
+        /* CURRENT PLAYABLE LEVEL */
+        .level-box.current-play { 
+            background: linear-gradient(135deg, #6366f1, #818cf8); 
+            box-shadow: 0 0 15px #6366f1; 
+            border-color: white; 
+            z-index: 2;
+            animation: pulse-border 1.5s infinite;
+        }
+        
+        @keyframes pulse-border {
+            0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+        }
+
+        /* LOCKED LEVELS */
+        .level-box.locked { 
+            background: rgba(0,0,0,0.2); 
+            color: #475569; 
+            cursor: default; 
+            border: 1px dashed #334155;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+        .level-box.locked:active { transform: none; }
+        
+        /* NEXT LOCKED (Ad Unlock) */
+        .level-box.next-locked { 
+            border: 1px solid #f59e0b; 
+            color: #f59e0b; 
+            cursor: pointer; 
+            opacity: 0.8;
+            background: rgba(245, 158, 11, 0.05);
+        }
+        .level-box.next-locked:hover { opacity: 1; background: rgba(245, 158, 11, 0.1); }
 
         /* --- SHOP STYLES --- */
         .tab-group { 
@@ -1183,7 +1227,13 @@ const UI = {
             
             if (i <= unlocked) {
                 statusClass = 'unlocked';
-                if (i < unlocked) statusClass += ' completed';
+                if (i < unlocked) {
+                    statusClass += ' completed';
+                    content = `${i}<div style="position:absolute; bottom:2px; right:4px; font-size:10px;">✓</div>`;
+                } else if (i === unlocked) {
+                    statusClass += ' current-play';
+                    content = `▶ ${i}`; 
+                }
             } else if (i === unlocked + 1) {
                 statusClass = 'next-locked';
                 content = `🔒 ${i}`;
@@ -1432,11 +1482,12 @@ const Game = {
                 icon.innerText = "👆";
                 title.innerText = "Welcome!";
                 text.innerHTML = "Swipe or use Arrow Keys to move.<br><span style='font-size:0.8em; color:#94a3b8'>(Touchscreens supported on PC!)</span>";
+                btnNext.innerText = "Next"; // Reset button text
                 break;
             case 1: // Dash
                 icon.innerText = "🚀";
                 title.innerText = "Speed Boost";
-                text.innerText = "This is your speed boost stamina. It recharges after a use. The speed boost delay can be upgraded via the store.\n\nDouble Tap screen or Press Spacebar to DASH!";
+                text.innerHTML = "This bar (top-left) is your stamina.<br>It recharges over time.<br>Upgrade boost delay in the store!<br><br>Double Tap screen or Press Spacebar to DASH!";
                 if(dashBar) dashBar.classList.add('tutorial-highlight');
                 break;
             case 2: // Apple
