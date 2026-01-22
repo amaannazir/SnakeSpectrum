@@ -7,10 +7,10 @@
     <!-- FAVICON: A Snake Emoji -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
     <!-- 
-      OFFLINE VERSION - LEVEL SELECT REDESIGN
-      - UI: Current Level pulsates and stands out with a Play icon.
-      - UI: Locked levels are dimmed/dashed to reduce click confusion.
-      - UI: Completed levels marked with checkmarks.
+      OFFLINE VERSION - DESKTOP SIZE LIMIT
+      - Feature: Constrained game board size on Desktop (Max 900x700) for better UX.
+      - Feature: Fullscreen remains active on Mobile.
+      - Visuals: Centered board with visible backdrop on large screens.
     -->
     <style>
         /* --- RESET & BASE --- */
@@ -161,8 +161,10 @@
             position: relative;
             z-index: 10;
             border-radius: 12px;
-            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
-            border: 2px solid rgba(255, 255, 255, 0.05);
+            /* Enhanced board visibility for desktop */
+            background: rgba(30, 41, 59, 0.5); 
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.6);
         }
 
         /* --- UI OVERLAYS --- */
@@ -221,14 +223,7 @@
         /* Unlocked/Played Levels */
         .level-box.unlocked { background: #334155; color: white; }
         .level-box.unlocked:hover { background: #475569; transform: translateY(-2px); }
-        
-        /* COMPLETED LEVELS - DARK GREEN + TICK */
-        .level-box.completed { 
-            background: #064e3b; /* Dark Green */
-            color: #10b981; /* Light Green Text */
-            box-shadow: 0 4px 0 #022c22; 
-            border-color: #059669; 
-        }
+        .level-box.completed { background: #10b981; box-shadow: 0 4px 0 #047857; border-color: #059669; }
         
         /* CURRENT PLAYABLE LEVEL */
         .level-box.current-play { 
@@ -1227,13 +1222,7 @@ const UI = {
             
             if (i <= unlocked) {
                 statusClass = 'unlocked';
-                if (i < unlocked) {
-                    statusClass += ' completed';
-                    content = `${i}<div style="position:absolute; bottom:2px; right:4px; font-size:10px;">✓</div>`;
-                } else if (i === unlocked) {
-                    statusClass += ' current-play';
-                    content = `▶ ${i}`; 
-                }
+                if (i < unlocked) statusClass += ' completed';
             } else if (i === unlocked + 1) {
                 statusClass = 'next-locked';
                 content = `🔒 ${i}`;
