@@ -7,10 +7,9 @@
     <!-- FAVICON: A Snake Emoji -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
     <!-- 
-      OFFLINE VERSION - DESKTOP SIZE LIMIT
-      - Feature: Constrained game board size on Desktop (Max 900x700) for better UX.
-      - Feature: Fullscreen remains active on Mobile.
-      - Visuals: Centered board with visible backdrop on large screens.
+      OFFLINE VERSION - DESKTOP SIZE FIX APPLIED
+      - Fix: Game.resize() now strictly clamps dimensions on screens > 1024px.
+      - Result: Playable area is capped at 900x700 on PC, preventing full-width stretching.
     -->
     <style>
         /* --- RESET & BASE --- */
@@ -163,8 +162,8 @@
             border-radius: 12px;
             /* Enhanced board visibility for desktop */
             background: rgba(30, 41, 59, 0.5); 
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 0 50px rgba(0, 0, 0, 0.6);
+            border: 4px solid rgba(255, 255, 255, 0.15); /* Thicker border */
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7); /* Deeper shadow */
         }
 
         /* --- UI OVERLAYS --- */
@@ -1402,7 +1401,15 @@ const Game = {
 
     resize() {
         const wrapper = document.getElementById('game-wrapper');
-        const w = wrapper.clientWidth; const h = wrapper.clientHeight;
+        let w = wrapper.clientWidth;
+        let h = wrapper.clientHeight;
+
+        // --- DESKTOP CLAMP FIX ---
+        if (window.innerWidth > 1024) {
+             w = Math.min(w, 900);
+             h = Math.min(h, 700);
+        }
+
         this.tileCountX = Math.floor(w / this.gridSize);
         this.tileCountY = Math.floor(h / this.gridSize);
         
@@ -1464,6 +1471,7 @@ const Game = {
         if (dashBar) dashBar.classList.remove('tutorial-highlight');
         
         overlay.classList.remove('hidden');
+        btnNext.innerText = "Next"; // Reset
         
         // Step Logic
         switch(this.tutorialStep) {
@@ -1471,7 +1479,6 @@ const Game = {
                 icon.innerText = "👆";
                 title.innerText = "Welcome!";
                 text.innerHTML = "Swipe or use Arrow Keys to move.<br><span style='font-size:0.8em; color:#94a3b8'>(Touchscreens supported on PC!)</span>";
-                btnNext.innerText = "Next"; // Reset button text
                 break;
             case 1: // Dash
                 icon.innerText = "🚀";
