@@ -7,10 +7,10 @@
     <!-- FAVICON: A Snake Emoji -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
     <!-- 
-      OFFLINE VERSION - PARTICLE PERFORMANCE FIX
-      - Rendering: Switched particles from Arc (Circle) to fillRect (Square) for drastic FPS boost.
-      - Logic: Optimized Game.update particle loop to avoid garbage collection stutter.
-      - Result: Eating food and trail effects are now buttery smooth.
+      OFFLINE VERSION - ANIMATION & INPUT OVERHAUL
+      - Animation: Moved particle updates to 60FPS render loop for zero stutter.
+      - Physics: Added friction to particles for a "Pop" effect.
+      - Input: Implemented a Move Queue buffer for perfect cornering responsiveness.
     -->
     <style>
         /* --- RESET & BASE --- */
@@ -1305,6 +1305,7 @@ const Game = {
     lastTime: 0, countdownVal: 0, lastCountdownTick: 0, sessionCurrency: 0,
     snake: [], velocity: {x: 1, y: 0}, nextVelocity: {x: 1, y: 0},
     foods: [], particles: [], walls: [], confetti: [],
+    moveQueue: [], // BUFFER FOR INPUT
     fogEnabled: false, invincible: 0, slowMo: 0, reversed: 0, dashCooldown: 0,
     digestions: [], biteTimer: 0, prevTail: null, didEat: false,
     accumulator: 0,
@@ -1333,7 +1334,8 @@ const Game = {
 
         this.canvas.addEventListener('touchmove', e => {
             e.preventDefault(); // Prevent scrolling
-            if (swipeTriggered) return; // Already handled this swipe
+            // Removed swipeTriggered check to allow continuous steering
+            // if (swipeTriggered) return; 
 
             const cx = e.changedTouches[0].screenX;
             const cy = e.changedTouches[0].screenY;
@@ -1347,6 +1349,9 @@ const Game = {
                 } else {
                     this.handleInput({key: dy > 0 ? 'ArrowDown' : 'ArrowUp'});
                 }
+                // Reset origin for continuous swipes
+                tx = cx;
+                ty = cy;
                 swipeTriggered = true; 
             }
         }, {passive: false});
@@ -1444,6 +1449,7 @@ const Game = {
         const sx = Math.floor(this.tileCountX / 2); const sy = Math.floor(this.tileCountY / 2);
         this.snake = [{x: sx, y: sy}, {x: sx-1, y: sy}, {x: sx-2, y: sy}];
         this.velocity = {x: 1, y: 0}; this.nextVelocity = {x: 1, y: 0};
+        this.moveQueue = []; // Reset Queue
         this.foods = []; this.walls = [];
         this.prevTail = null;
         this.lastTime = performance.now();
@@ -1556,6 +1562,7 @@ const Game = {
         const sx = Math.floor(this.tileCountX / 2); const sy = Math.floor(this.tileCountY / 2);
         this.snake = [{x: sx, y: sy}, {x: sx-1, y: sy}, {x: sx-2, y: sy}];
         this.velocity = {x: 1, y: 0}; this.nextVelocity = {x: 1, y: 0};
+        this.moveQueue = []; // RESET QUEUE
         this.foods = []; this.particles = []; this.walls = []; this.confetti = [];
         this.prevTail = null;
         this.accumulator = 0;
@@ -1773,12 +1780,20 @@ const Game = {
             }
             e.preventDefault(); return;
         }
+        
+        // --- MOVE QUEUE INPUT BUFFERING ---
         let dx = 0, dy = 0; const k = e.key;
-        if (k === 'ArrowUp' || k === 'w') dy = -1; if (k === 'ArrowDown' || k === 's') dy = 1; if (k === 'ArrowLeft' || k === 'a') dx = -1; if (k === 'ArrowRight' || k === 'd') dx = 1;
+        if (k === 'ArrowUp' || k === 'w') dy = -1; 
+        if (k === 'ArrowDown' || k === 's') dy = 1; 
+        if (k === 'ArrowLeft' || k === 'a') dx = -1; 
+        if (k === 'ArrowRight' || k === 'd') dx = 1;
+        
         if (dx === 0 && dy === 0) return;
-        if (this.reversed > 0) { dx = -dx; dy = -dy; }
-        if (dx !== 0 && this.velocity.x !== 0) return; if (dy !== 0 && this.velocity.y !== 0) return;
-        this.nextVelocity = {x: dx, y: dy};
+        
+        // Push to queue, limit queue size to prevent massive backlog
+        if (this.moveQueue.length < 2) {
+             this.moveQueue.push({x: dx, y: dy});
+        }
     },
 
     togglePause() {
@@ -1817,6 +1832,8 @@ const Game = {
                       this.nextVelocity = {x:0, y:0}; // Reset to stop
                  }
              }
+             
+             this.updateParticles(); // 60 FPS Particle Update
              
              let interpolation = this.accumulator / this.speed;
              Renderer.draw(interpolation);
@@ -1858,15 +1875,49 @@ const Game = {
             this.update();
             this.accumulator -= this.speed;
         }
+        
+        this.updateParticles(); // 60 FPS Particle Update
 
         let interpolation = this.accumulator / this.speed;
         Renderer.draw(interpolation);
+    },
+    
+    // NEW PARTICLE UPDATE LOOP (Run in Loop, not Update)
+    updateParticles() {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            let p = this.particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            
+            // Friction for "Pop" effect
+            p.vx *= 0.92;
+            p.vy *= 0.92;
+            
+            p.life--;
+            p.alpha -= 0.03; 
+            
+            if (p.life <= 0 || p.alpha <= 0) {
+                this.particles.splice(i, 1);
+            }
+        }
     },
 
     update() {
         if (this.invincible > 0) this.invincible--;
         if (this.reversed > 0) this.reversed--;
-        this.velocity = {...this.nextVelocity};
+        
+        // --- MOVE QUEUE LOGIC ---
+        // Process buffered inputs for smooth turning
+        let move = this.moveQueue.length > 0 ? this.moveQueue.shift() : this.nextVelocity;
+        
+        // Validate move against current velocity (prevent 180s)
+        if ((move.x !== 0 && this.velocity.x === 0) || (move.y !== 0 && this.velocity.y === 0)) {
+             this.velocity = move;
+        }
+        
+        // Store last attempt as nextVelocity in case queue runs dry
+        this.nextVelocity = this.velocity;
+        
         let head = { x: this.snake[0].x + this.velocity.x, y: this.snake[0].y + this.velocity.y };
         
         // --- MAGNET LOGIC ---
@@ -1919,15 +1970,7 @@ const Game = {
         }
 
         if(Storage.data.trail !== 'none' && Math.random() > 0.5) this.spawnTrailParticle(this.snake[1] || head, Storage.data.trail);
-        // Optimized Particle Loop
-        for (let i = this.particles.length - 1; i >= 0; i--) {
-            let p = this.particles[i];
-            p.x += p.vx;
-            p.y += p.vy;
-            p.life--;
-            p.alpha -= 0.05;
-            if (p.life <= 0) this.particles.splice(i, 1);
-        }
+        // Removed old particle update loop from here
         
         for(let i = this.foods.length - 1; i >= 0; i--) if (this.foods[i].life > 0 && --this.foods[i].life === 0) this.foods.splice(i, 1);
         this.foods = this.foods.filter(f => f.x < this.tileCountX && f.y < this.tileCountY);
@@ -1942,6 +1985,8 @@ const Game = {
         // --- TUTORIAL HANDLER ---
         if (this.state === 'tutorial') {
              AudioSys.playEat();
+             // Spawn explosion
+             this.spawnParticles(f.x, f.y, f.type === 'poison' ? '#a3e635' : (f.type === 'gold' ? '#fbbf24' : '#f472b6'));
              this.tutorialStep++;
              this.updateTutorial();
              // Prevent growing too long in tutorial
@@ -2128,12 +2173,31 @@ const Game = {
     },
 
     spawnParticles(x, y, color) {
-        for(let k=0; k<8; k++) this.particles.push({ x: x * this.gridSize + this.gridSize/2, y: y * this.gridSize + this.gridSize/2, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8, color: color, life: 25, alpha: 1 });
+        // High velocity spark effect
+        for(let k=0; k<12; k++) {
+            this.particles.push({ 
+                x: x * this.gridSize + this.gridSize/2, 
+                y: y * this.gridSize + this.gridSize/2, 
+                vx: (Math.random() - 0.5) * 12, // High initial speed
+                vy: (Math.random() - 0.5) * 12, 
+                color: color, 
+                life: 30, // 0.5 seconds at 60fps
+                alpha: 1 
+            });
+        }
     },
 
     spawnTrailParticle(pos, type) {
         let color = '#fff'; if(type === 'dust') color = '#9ca3af'; if(type === 'flame') color = '#f97316'; if(type === 'bubble') color = '#3b82f6'; if(type === 'sparkle') color = '#fef08a';
-        this.particles.push({ x: pos.x * this.gridSize + this.gridSize/2 + (Math.random()-0.5)*10, y: pos.y * this.gridSize + this.gridSize/2 + (Math.random()-0.5)*10, vx: (Math.random()-0.5)*1, vy: -1 - Math.random(), color: color, life: 20, alpha: 0.6 });
+        this.particles.push({ 
+            x: pos.x * this.gridSize + this.gridSize/2 + (Math.random()-0.5)*10, 
+            y: pos.y * this.gridSize + this.gridSize/2 + (Math.random()-0.5)*10, 
+            vx: (Math.random()-0.5)*1, 
+            vy: -1 - Math.random(), 
+            color: color, 
+            life: 20, 
+            alpha: 0.6 
+        });
     },
 
     spawnConfetti() {
