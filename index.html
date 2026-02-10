@@ -7,9 +7,10 @@
     <!-- FAVICON: A Snake Emoji -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
     <!-- 
-      OFFLINE VERSION - DESKTOP SIZE FIX APPLIED
-      - Fix: Game.resize() now strictly clamps dimensions on screens > 1024px.
-      - Result: Playable area is capped at 900x700 on PC, preventing full-width stretching.
+      OFFLINE VERSION - PARTICLE PERFORMANCE FIX
+      - Rendering: Switched particles from Arc (Circle) to fillRect (Square) for drastic FPS boost.
+      - Logic: Optimized Game.update particle loop to avoid garbage collection stutter.
+      - Result: Eating food and trail effects are now buttery smooth.
     -->
     <style>
         /* --- RESET & BASE --- */
@@ -1918,8 +1919,16 @@ const Game = {
         }
 
         if(Storage.data.trail !== 'none' && Math.random() > 0.5) this.spawnTrailParticle(this.snake[1] || head, Storage.data.trail);
-        this.particles = this.particles.filter(p => p.life > 0);
-        this.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; p.alpha -= 0.05; });
+        // Optimized Particle Loop
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            let p = this.particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life--;
+            p.alpha -= 0.05;
+            if (p.life <= 0) this.particles.splice(i, 1);
+        }
+        
         for(let i = this.foods.length - 1; i >= 0; i--) if (this.foods[i].life > 0 && --this.foods[i].life === 0) this.foods.splice(i, 1);
         this.foods = this.foods.filter(f => f.x < this.tileCountX && f.y < this.tileCountY);
         
@@ -2203,7 +2212,13 @@ const Renderer = {
             ctx.restore();
         });
 
-        Game.particles.forEach(p => { ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill(); });
+        // OPTIMIZED PARTICLE RENDERING (SQUARES)
+        Game.particles.forEach(p => { 
+            ctx.globalAlpha = p.alpha; 
+            ctx.fillStyle = p.color; 
+            // Draw as small squares instead of circles for performance
+            ctx.fillRect(p.x - 2, p.y - 2, 4, 4); 
+        });
         ctx.globalAlpha = 1.0;
 
         this.drawSnake(ctx, cs, time, interp || 0); // Pass interpolation factor
